@@ -17,6 +17,37 @@ ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin123}"
 FORCE_DNS_REDIRECT="${FORCE_DNS_REDIRECT:-true}"
 TZ="${TZ:-Asia/Jakarta}"
 
+# 0. Capability Preflight Check (NET_ADMIN)
+echo "[*] Checking Linux capabilities (NET_ADMIN)..."
+TEST_ERR=$(ip link add dev wgtest_cap type wireguard 2>&1 || true)
+if echo "${TEST_ERR}" | grep -qi "Operation not permitted"; then
+    echo "================================================================="
+    echo " [FATAL ERROR] MISSING 'NET_ADMIN' CAPABILITY!"
+    echo "================================================================="
+    echo " Kontainer ini membutuhkan kapabilitas Linux 'NET_ADMIN' untuk"
+    echo " membuat interface WireGuard VPN (wg0) dan mengatur routing."
+    echo ""
+    echo " CARA MENGATASI PADA CONTAINER PROVIDER ANDA:"
+    echo " 1. Jika menggunakan Docker Compose:"
+    echo "    Pastikan di file docker-compose.yml terdapat:"
+    echo "      cap_add:"
+    echo "        - NET_ADMIN"
+    echo "        - SYS_MODULE"
+    echo " 2. Jika menggunakan Portainer / Coolify / Dokploy / CasaOS:"
+    echo "    - Portainer: Advanced container settings -> Capabilities -> Aktifkan NET_ADMIN."
+    echo "    - Atau aktifkan 'Privileged Mode' = ON."
+    echo " 3. Jika menggunakan Container Cloud PaaS (Railway / Render / Heroku):"
+    echo "    Provider PaaS tersebut TIDAK mengizinkan VPN / UDP port 51820."
+    echo "    WireGuard membutuhkan VPS (Virtual Private Server) standar seperti"
+    echo "    Hetzner, DigitalOcean, Linode, Vultr, AWS EC2, atau IdCloudHost."
+    echo "================================================================="
+    echo "[*] Menunggu 60 detik sebelum keluar agar log ini sempat terbaca..."
+    sleep 60
+    exit 1
+else
+    ip link delete dev wgtest_cap 2>/dev/null || true
+fi
+
 # 1. Ensure /dev/net/tun exists (for userspace WireGuard fallback if needed)
 if [ ! -c /dev/net/tun ]; then
     echo "[*] Creating /dev/net/tun..."
@@ -298,7 +329,19 @@ fi
 
 # 11. Start WireGuard
 echo "[*] Bringing up WireGuard interface (wg0)..."
-wg-quick up wg0
+if ! wg-quick up wg0; then
+    echo "================================================================="
+    echo " [FATAL ERROR] Gagal menjalankan WireGuard (wg-quick up wg0)!"
+    echo "================================================================="
+    echo " Kemungkinan penyebab:"
+    echo " 1. Kapabilitas Linux NET_ADMIN atau SYS_MODULE tidak diizinkan."
+    echo " 2. Kernel host tidak memiliki modul WireGuard dan device /dev/net/tun diblokir."
+    echo " 3. Iptables dibatasi oleh security policy container provider."
+    echo "================================================================="
+    echo "[*] Menunggu 60 detik sebelum keluar agar log ini sempat terbaca..."
+    sleep 60
+    exit 1
+fi
 
 # 12. Display Status & QR Codes
 echo ""
